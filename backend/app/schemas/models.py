@@ -27,9 +27,11 @@ class OCRLine(BaseModel):
     width: int
     height: int
     indent_level: int
+    raw_text: str | None = None
 
 class ImageResponse(BaseModel):
     code: str
     lines: list[OCRLine]
     syntax: SyntaxResult
     warnings: list[str] = Field(default_factory=list)
+    deskew_degrees: float = Field(0.0, description="Applied rotation in degrees. Line boxes use the original image coordinates.")

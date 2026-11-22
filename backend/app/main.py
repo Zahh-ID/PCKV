@@ -12,7 +12,11 @@ app.add_middleware(CORSMiddleware,allow_origins=origins,allow_methods=['GET','PO
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok','ocr_mode':'mock' if os.getenv('CODESCRIBE_MOCK_OCR')=='1' else 'trocr'}
+    return {
+        'status':'ok',
+        'ocr_mode':'mock' if os.getenv('CODESCRIBE_MOCK_OCR')=='1' else 'trocr',
+        'layout_mode':'hybrid' if os.getenv('CODESCRIBE_TEXT_DETECTOR') else 'projection',
+    }
 
 @app.post('/api/analyze',response_model=SyntaxResult)
 def analyze(payload: AnalyzeRequest):
@@ -26,17 +30,18 @@ async def process_image(image: UploadFile=File(...)):
     if len(data)>8_000_000:
         raise HTTPException(status_code=413,detail='Maksimum 8 MB')
     try:
-        crops,warnings=decode_and_segment(data)
+        crops,warnings,rotation=decode_and_segment(data)
         levels=indent_levels(crops)
-        recognized=recognize(crops)
+        recognized, raw = recognize(crops, levels)
         if os.getenv('CODESCRIBE_MOCK_OCR')=='1':
             warnings.append('DEMO MODE: teks OCR adalah placeholder')
-        warnings.append('Indentasi bersifat heuristik dan harus diverifikasi manusia')
         code='\n'.join(('    '*level)+txt for txt,level in zip(recognized,levels))
         parsed=analyze_python(code)
-        lines=[OCRLine(line_number=i+1,text=txt,x=c.x,y=c.y,width=c.width,height=c.height,indent_level=level)
-               for i,(c,txt,level) in enumerate(zip(crops,recognized,levels))]
-        return ImageResponse(code=code,lines=lines,syntax=parsed,warnings=warnings)
+        lines = []
+        for number, (crop, text, original, level) in enumerate(zip(crops, recognized, raw, levels), start=1):
+            x, y, width, height = crop.source_box or (crop.x, crop.y, crop.width, crop.height)
+            lines.append(OCRLine(line_number=number,text=text,raw_text=original,x=x,y=y,width=width,height=height,indent_level=level))
+        return ImageResponse(code=code,lines=lines,syntax=parsed,warnings=warnings,deskew_degrees=rotation)
     except ValueError as exc:
         raise HTTPException(status_code=422,detail=str(exc)) from exc
     except RuntimeError as exc:

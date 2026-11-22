@@ -9,10 +9,7 @@ BLOCK_WORDS=('if','elif','else','for','while','def','class','try','except','fina
 def analyze_python(code: str) -> SyntaxResult:
     if not code.strip():
         return SyntaxResult(parse_valid=False,error_message='Kode kosong',rules=[],warnings=['Tidak ada kode.'])
-    warnings=[
-        'Skor rubrik bukan persentase kebenaran keseluruhan jawaban ujian.',
-        'Periksa hasil OCR secara manual sebelum menilai mahasiswa.'
-    ]
+    warnings=[]
     valid=True;error_message=None;error_line=None;error_offset=None
     try:
         ast.parse(code)
@@ -54,16 +51,17 @@ def analyze_python(code: str) -> SyntaxResult:
         rules.append(RuleResult(name='Titik dua pada header blok',passed=not bad,message='Header menggunakan titik dua' if not bad else 'Kemungkinan titik dua hilang',line=bad[0] if bad else None))
     else:
         rules.append(RuleResult(name='Titik dua pada header blok',passed=False,applicable=False,message='Tidak ada header blok'))
-    indent_ok=True;indent_msg='Tidak ada error indentasi terdeteksi'
+    indent_ok=True;indent_applicable=True;indent_msg='Tidak ada error indentasi terdeteksi'
     try:
         list(tokenize.generate_tokens(io.StringIO(code).readline))
     except IndentationError as exc:
         indent_ok=False;indent_msg=str(exc)
     except tokenize.TokenError:
+        indent_ok=False;indent_applicable=False
         indent_msg='Belum dapat dipastikan karena tokenisasi gagal'
     if not valid and error_message and ('indent' in error_message.lower() or 'expected an indented block' in error_message.lower()):
-        indent_ok=False;indent_msg=error_message
-    rules.append(RuleResult(name='Struktur indentasi',passed=indent_ok,message=indent_msg))
+        indent_ok=False;indent_applicable=True;indent_msg=error_message
+    rules.append(RuleResult(name='Struktur indentasi',passed=indent_ok,applicable=indent_applicable,message=indent_msg))
     rules.append(RuleResult(name='Parsing AST keseluruhan',passed=valid,message='Valid' if valid else 'Syntax error',line=error_line))
     applicable=[r for r in rules if r.applicable]
     score=round(100*sum(r.passed for r in applicable)/len(applicable),1) if applicable else None
